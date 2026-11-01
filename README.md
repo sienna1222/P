@@ -54,3 +54,23 @@ nhanes_analytic <- step3_data %>% filter(egfr >= 15)
 N4 <- nrow(nhanes_analytic)
 cat("N4 (剔除 eGFR < 15 极端值，最终分析样本): 剩余", N4, "人 | 剔除", N3 - N4, "人\n")
 cat("=========================================\n")
+# GMM聚类分析+BIC曲线
+install.packages("mclust")
+library(mclust)
+cluster_vars <- c("phenoage0", "egfr", "bmi", "sbp")
+complete_idx <- complete.cases(nhanes_analytic[, cluster_vars])
+#提取用于聚类的干净数据子集
+cluster_data_clean <- nhanes_analytic[complete_idx, cluster_vars]
+#Z-score 标准化
+cluster_matrix <- scale(cluster_data_clean)
+#运行 GMM 聚类
+gmm_fit <- Mclust(cluster_matrix)
+#查看 BIC 曲线
+plot(gmm_fit, what = "BIC")
+#安全地将聚类标签赋给对应的干净子集（或整张表对应的行）
+nhanes_analytic_clustered <- nhanes_analytic
+#先初始化为 NA，再将对应完整行的位置填入聚类标签
+nhanes_analytic_clustered$cluster_gmm <- NA
+nhanes_analytic_clustered$cluster_gmm[complete_idx] <- as.factor(gmm_fit$classification)
+#查看各亚型人数分布
+table(nhanes_analytic_clustered$cluster_gmm, useNA = "ifany")
