@@ -5,7 +5,6 @@ library(ggplot2)
 library(survminer)
 library(survival)
 library(tidyr)
-
 # 1. 数据清洗与预处理
 data(NHANES4)
 #定义 CKD-EPI 2021 计算函数
@@ -140,27 +139,20 @@ print(km_plot_optimized)
 ggsave("KM_Survival_Curve_PhenoAge.pdf", plot = print(km_plot_optimized), width = 8, height = 7)
 
 # 5. 单因素 Cox 回归与 PH 假定检验
-# ==========================================
-# 1. 单因素 Cox 回归分析与比例风险假定 (PH) 检验
-# ==========================================
 library(survival)
 library(dplyr)
-
-# 【核心设定】：显式将 Subtype 4（最健康/预后最好组）设定为参照基准 (ref = "4", HR = 1.00)
+#【核心设定】：显式将 Subtype 4（最健康/预后最好组）设定为参照基准 (ref = "4", HR = 1.00)
 nhanes_analytic_clustered$cluster_gmm <- relevel(factor(nhanes_analytic_clustered$cluster_gmm), ref = "4")
-
-# 拟合单因素 Cox 比例风险回归模型
+#拟合单因素 Cox 比例风险回归模型
 uni_cox_model <- coxph(
   Surv(permth_int, status) ~ cluster_gmm, 
   data = nhanes_analytic_clustered
 )
-
-# 提取详细结果并构建标准 SCI 论文格式的表格
+#提取详细结果并构建标准 SCI 论文格式的表格
 uni_summary <- summary(uni_cox_model)
 uni_hr <- exp(uni_summary$coefficients[, "coef"])
 uni_ci <- exp(confint(uni_cox_model))
 uni_pval <- uni_summary$coefficients[, "Pr(>|z|)"]
-
 uni_results_table <- data.frame(
   Comparison = rownames(uni_summary$coefficients),
   HR = round(uni_hr, 3),
@@ -169,19 +161,15 @@ uni_results_table <- data.frame(
   P_value = signif(uni_pval, 3)
 )
 rownames(uni_results_table) <- NULL
-
 cat("=== 1. 单因素 Cox 回归结果汇总表 (Ref = Subtype 4) ===\n")
 print(uni_results_table)
-
-# 导出为表格文件
+#导出为表格文件
 write.csv(uni_results_table, file = "Univariate_Cox_PhenoAge_Results.csv", row.names = FALSE)
-
-# 运行比例风险假定检验 (cox.zph)
+#运行比例风险假定检验 (cox.zph)
 ph_test <- cox.zph(uni_cox_model)
 cat("\n=== 2. 等比例风险假定 (cox.zph) 统计检验结果 ===\n")
 print(ph_test)
-
-# 导出 Schoenfeld 残差诊断图 (PDF 矢量图)
+#导出 Schoenfeld 残差诊断图
 pdf("Schoenfeld_Residuals_Plot.pdf", width = 7, height = 6)
 par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
 plot(
@@ -197,53 +185,42 @@ title(main = "Schoenfeld Residuals Test (PH Assumption)")
 dev.off()
 cat("\n=== 提示：Schoenfeld 诊断图已成功保存！===\n\n")
 
-
-# ==========================================
 # 2. 核心指标均值画像与顶刊热图绘制
-# ==========================================
 library(tidyr)
 library(ggplot2)
-
-# 定义核心指标变量
+#定义核心指标变量
 cluster_vars_profile <- c("phenoage0", "egfr", "bmi", "sbp")
-
-# 计算各亚型在核心指标上的均值
+#计算各亚型在核心指标上的均值
 subtype_profile <- nhanes_analytic_clustered %>%
   group_by(cluster_gmm) %>%
   summarise(across(all_of(cluster_vars_profile), ~ mean(.x, na.rm = TRUE)))
-
-# 进行 Z-score 标准化（均值为0，方差为1）
+#进行 Z-score 标准化（均值为0，方差为1）
 subtype_profile_scaled <- subtype_profile %>%
   mutate(across(all_of(cluster_vars_profile), ~ scale(.x)[, 1]))
-
-# 调整绘图因子顺序：将最健康的 Subtype 4 排在最下方，高危组在上方
+#调整绘图因子顺序：将最健康的 Subtype 4 排在最下方，高危组在上方
 subtype_profile_scaled$cluster_gmm <- factor(
   subtype_profile_scaled$cluster_gmm, 
   levels = c("2", "3", "1", "4") # 4在最下，2在最上
 )
-
-# 转换为长数据格式
+#转换为长数据格式
 heatmap_long <- subtype_profile_scaled %>%
   pivot_longer(
     cols = all_of(cluster_vars_profile),
     names_to = "Variable",
     values_to = "Z_Score"
   )
-
-# 规范化变量显示名称
+#规范化变量显示名称
 heatmap_long$Variable <- factor(
   heatmap_long$Variable,
   levels = c("phenoage0", "egfr", "bmi", "sbp"),
   labels = c("PhenoAge", "eGFR", "BMI", "Systolic BP")
 )
-
 heatmap_long$Subtype <- paste0("Subtype ", heatmap_long$cluster_gmm)
 heatmap_long$Subtype <- factor(
   heatmap_long$Subtype, 
   levels = c("Subtype 2", "Subtype 3", "Subtype 1", "Subtype 4")
 )
-
-# 绘制高颜值、顶刊风格的精细化热图
+#绘制高颜值、顶刊风格的精细化热图
 p_heatmap_pro <- ggplot(heatmap_long, aes(x = Variable, y = Subtype, fill = Z_Score)) +
   geom_tile(color = "white", linewidth = 1.2, na.rm = FALSE) +
   geom_text(aes(label = sprintf("%.2f", Z_Score)), color = "black", size = 4.5, fontface = "bold") +
@@ -269,10 +246,8 @@ p_heatmap_pro <- ggplot(heatmap_long, aes(x = Variable, y = Subtype, fill = Z_Sc
   labs(
     title = "Clinical and PhenoAge Profile Across GMM Subtypes"
   )
-
-# 在控制台打印预览
+#在控制台打印预览
 print(p_heatmap_pro)
-
-# 导出为高分辨率出版级 PDF 矢量图
+#导出为高分辨率出版级 PDF 矢量图
 ggsave("Publication_Quality_Heatmap_PhenoAge.pdf", plot = p_heatmap_pro, width = 8, height = 5, dpi = 300)
 cat("\n=== 提示：单因素回归表格与规范热图已全部生成完毕！===\n")
