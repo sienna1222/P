@@ -107,42 +107,87 @@ table1_df <- print(table1_obj, printToggle = FALSE, showAllLevels = TRUE)
 write.csv(table1_df, file = "Baseline_Table1_PhenoAge_Clusters.csv", row.names = TRUE)
 
 # 4. K-M 生存曲线分析
-nhanes_analytic_clustered$cluster_gmm <- relevel(nhanes_analytic_clustered$cluster_gmm, ref = "4")
+library(survival)
+library(survminer)
+library(ggplot2)
+#确保因子水平严格为 1, 2, 3, 4 自然顺序
+nhanes_analytic_clustered$cluster_gmm <- factor(
+  as.character(nhanes_analytic_clustered$cluster_gmm),
+  levels = c("1", "2", "3", "4")
+)
+#拟合生存模型
 km_fit <- survfit(Surv(permth_int, status) ~ cluster_gmm, data = nhanes_analytic_clustered)
-km_plot_optimized <- ggsurvplot(
+#顶刊经典色系 (Lancet/Nature：海蓝、琥珀黄、深橙红、祖母绿)
+sci_palette <- c("#0072B2", "#E69F00", "#D55E00", "#009E73")
+# 绘制 K-M 曲线（图例与统计值精准置于左下角纯白区）
+km_plot_topjournal <- ggsurvplot(
   km_fit,
   data = nhanes_analytic_clustered,
-  pval = TRUE,             
-  pval.coord = c(5, 0.82), 
-  conf.int = TRUE,         
-  ylim = c(0.75, 1.00),    
-  censv = TRUE,            
-  surv.median.line = "none", 
-  risk.table = TRUE,       
-  risk.table.col = "strata",
-  risk.table.height = 0.25,
-  risk.table.y.text.col = TRUE,
-  palette = c("#2E9FDF", "#E7B800", "#FC4E07", "#2ca02c"),
-  xlab = "Follow-up Time (Months)", 
+    # --- 曲线与置信区间 ---
+  size = 1.0,               # 典雅适中的主曲线粗细
+  censor = FALSE,           # 关键：大样本不画密集十字毛刺
+  conf.int = TRUE,          # 保留置信区间
+  conf.int.alpha = 0.12,    # 薄雾通透阴影，不显脏乱
+    # --- 坐标轴 ---
+  ylim = c(0.75, 1.00),     
+  break.x.by = 50,          # 0, 50, 100, 150, 200 个月标准刻度
+  xlab = "Time (Months)", 
   ylab = "Survival Probability",
-  legend.title = "Subtypes",
+    # --- 统计学显著性标注 ---
+  pval = "Log-rank p < 0.001",
+  pval.coord = c(10, 0.86),    # 放置在左下角上方空白处 (Time=10, Y=0.86)
+  pval.size = 4.2,
+    # --- 图例（关键修改：移动到左下角完全空白区） ---
+  palette = sci_palette,
+  legend = c(0.18, 0.23),      # 相对坐标 (X: 18%, Y: 23%)，精准落入左下角无曲线区域
+  legend.title = "",           # 去除冗余的 Subtypes 标题
   legend.labs = c("Subtype 1", "Subtype 2", "Subtype 3", "Subtype 4"),
-  legend = c(0.85, 0.25), 
-  ggtheme = theme_bw() + theme(
-    panel.grid.minor = element_blank(),
-    axis.text = element_text(size = 11, color = "black"),
-    axis.title = element_text(size = 12, face = "bold"),
-    legend.background = element_rect(fill = alpha("white", 0.8))
-  )
+    # --- 风险表 (Risk Table) 样式 ---
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.22,
+  risk.table.y.text = TRUE,
+  risk.table.y.text.col = TRUE,
+  fontsize = 3.6,
+    # --- 经典 L 型顶刊极简主题 ---
+  ggtheme = theme_classic(base_size = 12) +
+    theme(
+      axis.line = element_line(linewidth = 0.6, color = "black"),
+      axis.ticks = element_line(linewidth = 0.6, color = "black"),
+      axis.text = element_text(size = 11, face = "bold", color = "black"),
+      axis.title = element_text(size = 12, face = "bold", color = "black"),
+      legend.text = element_text(size = 10, face = "bold"),
+      legend.background = element_rect(fill = alpha("white", 0.7), color = NA), # 半透明纯白底
+      plot.margin = margin(t = 10, r = 15, b = 5, l = 15)
+    )
 )
-print(km_plot_optimized)
-ggsave("KM_Survival_Curve_PhenoAge.pdf", plot = print(km_plot_optimized), width = 8, height = 7)
+#微调风险表去除多余边框
+km_plot_topjournal$table <- km_plot_topjournal$table + 
+  theme_classic(base_size = 12) +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(face = "bold", size = 10),
+    plot.title = element_text(size = 11, face = "bold", hjust = 0)
+  )
+#打印查看
+print(km_plot_topjournal)
+#导出发表级 PDF 矢量图与高分 TIFF
+pdf("KM_Survival_TopJournal_Clean.pdf", width = 7.5, height = 6.5, onefile = FALSE)
+print(km_plot_topjournal)
+dev.off()
+tiff("KM_Survival_TopJournal_Clean.tiff", width = 2250, height = 1950, res = 300, compression = "lzw")
+print(km_plot_topjournal)
+dev.off()
 
 # 5. 单因素 Cox 回归与 PH 假定检验
 library(survival)
 library(dplyr)
-#【核心设定】：显式将 Subtype 4（最健康/预后最好组）设定为参照基准 (ref = "4", HR = 1.00)
-nhanes_analytic_clustered$cluster_gmm <- relevel(factor(nhanes_analytic_clustered$cluster_gmm), ref = "4")
+#【核心设定】：显式将 Subtype 3（最健康/预后最好组）设定为参照基准 (ref = "3", HR = 1.00)
+nhanes_analytic_clustered$cluster_gmm <- relevel(factor(nhanes_analytic_clustered$cluster_gmm), ref = "3")
 #拟合单因素 Cox 比例风险回归模型
 uni_cox_model <- coxph(
   Surv(permth_int, status) ~ cluster_gmm, 
@@ -161,7 +206,7 @@ uni_results_table <- data.frame(
   P_value = signif(uni_pval, 3)
 )
 rownames(uni_results_table) <- NULL
-cat("=== 1. 单因素 Cox 回归结果汇总表 (Ref = Subtype 4) ===\n")
+cat("=== 1. 单因素 Cox 回归结果汇总表 (Ref = Subtype 3) ===\n")
 print(uni_results_table)
 #导出为表格文件
 write.csv(uni_results_table, file = "Univariate_Cox_PhenoAge_Results.csv", row.names = FALSE)
@@ -185,69 +230,72 @@ title(main = "Schoenfeld Residuals Test (PH Assumption)")
 dev.off()
 cat("\n=== 提示：Schoenfeld 诊断图已成功保存！===\n\n")
 
-# 2. 核心指标均值画像与顶刊热图绘制
+# 核心指标均值画像与顶刊热图绘制
+library(dplyr)
 library(tidyr)
 library(ggplot2)
-#定义核心指标变量
+#提取各亚型在 4 个核心指标上的均值
 cluster_vars_profile <- c("phenoage0", "egfr", "bmi", "sbp")
-#计算各亚型在核心指标上的均值
 subtype_profile <- nhanes_analytic_clustered %>%
   group_by(cluster_gmm) %>%
   summarise(across(all_of(cluster_vars_profile), ~ mean(.x, na.rm = TRUE)))
-#进行 Z-score 标准化（均值为0，方差为1）
-subtype_profile_scaled <- subtype_profile %>%
-  mutate(across(all_of(cluster_vars_profile), ~ scale(.x)[, 1]))
-#调整绘图因子顺序：将最健康的 Subtype 4 排在最下方，高危组在上方
-subtype_profile_scaled$cluster_gmm <- factor(
-  subtype_profile_scaled$cluster_gmm, 
-  levels = c("2", "3", "1", "4") # 4在最下，2在最上
-)
+#进行标准化处理，并对保护性指标 eGFR 实施方向反转（取负）
+subtype_profile_aligned <- subtype_profile %>%
+  mutate(
+    z_PhenoAge = scale(phenoage0)[, 1],
+    z_eGFR_impairment = -scale(egfr)[, 1],  # 核心：取负值，代表肾功能减退/损伤程度
+    z_BMI = scale(bmi)[, 1],
+    z_SBP = scale(sbp)[, 1]
+  ) %>%
+  select(cluster_gmm, z_PhenoAge, z_eGFR_impairment, z_BMI, z_SBP)
 #转换为长数据格式
-heatmap_long <- subtype_profile_scaled %>%
+heatmap_long <- subtype_profile_aligned %>%
   pivot_longer(
-    cols = all_of(cluster_vars_profile),
+    cols = starts_with("z_"),
     names_to = "Variable",
     values_to = "Z_Score"
   )
-#规范化变量显示名称
+#规范化指标标签与列排列顺序
 heatmap_long$Variable <- factor(
   heatmap_long$Variable,
-  levels = c("phenoage0", "egfr", "bmi", "sbp"),
-  labels = c("PhenoAge", "eGFR", "BMI", "Systolic BP")
+  levels = c("z_PhenoAge", "z_eGFR_impairment", "z_BMI", "z_SBP"),
+  labels = c("PhenoAge", "Renal Impairment\n(-eGFR)", "BMI", "Systolic BP")
 )
+#设定纵轴阶梯顺序：由下至上由健康走向高危
+#Subtype 3 (底/最健康) -> Subtype 4 -> Subtype 1 -> Subtype 2 (顶/最危重)
 heatmap_long$Subtype <- paste0("Subtype ", heatmap_long$cluster_gmm)
 heatmap_long$Subtype <- factor(
   heatmap_long$Subtype, 
-  levels = c("Subtype 2", "Subtype 3", "Subtype 1", "Subtype 4")
+  levels = c("Subtype 3", "Subtype 4", "Subtype 1", "Subtype 2")
 )
-#绘制高颜值、顶刊风格的精细化热图
-p_heatmap_pro <- ggplot(heatmap_long, aes(x = Variable, y = Subtype, fill = Z_Score)) +
+#绘制临床语义统一对齐的顶刊热图
+p_heatmap_aligned <- ggplot(heatmap_long, aes(x = Variable, y = Subtype, fill = Z_Score)) +
   geom_tile(color = "white", linewidth = 1.2, na.rm = FALSE) +
   geom_text(aes(label = sprintf("%.2f", Z_Score)), color = "black", size = 4.5, fontface = "bold") +
   scale_fill_gradient2(
-    low = "#2166AC",      # 优质深蓝（代表低风险/负向偏离）
-    mid = "#FFFFBF",      # 柔和过渡白黄色
-    high = "#B2182B",     # 优质深红（代表高风险/正向偏离）
+    low = "#2166AC",      # 优质深蓝（健康/生理机能优异）
+    mid = "#FFFFBF",      # 柔和米黄（全人群平均水准）
+    high = "#B2182B",     # 优质深红（病理加重/高度危险）
     midpoint = 0,
     limit = c(-1.5, 1.5), 
-    name = "Z-Score"
+    name = "Risk\nZ-Score"
   ) +
   theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
-    axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, face = "bold", color = "black", size = 12),
+    axis.text.x = element_text(face = "bold", color = "black", size = 11, lineheight = 0.9),
     axis.text.y = element_text(face = "bold", color = "black", size = 12),
     axis.title = element_blank(),
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 16, margin = margin(b = 15)),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 15, margin = margin(b = 15)),
     legend.title = element_text(face = "bold", size = 11),
     legend.position = "right",
     plot.margin = margin(20, 20, 20, 20)
   ) +
   labs(
-    title = "Clinical and PhenoAge Profile Across GMM Subtypes"
+    title = "Clinical Risk & Phenotypic Aging Profile Across GMM Subtypes"
   )
-#在控制台打印预览
-print(p_heatmap_pro)
-#导出为高分辨率出版级 PDF 矢量图
-ggsave("Publication_Quality_Heatmap_PhenoAge.pdf", plot = p_heatmap_pro, width = 8, height = 5, dpi = 300)
+#控制台预览与高清导出
+print(p_heatmap_aligned)
+ggsave("Publication_Quality_Heatmap_Aligned.pdf", plot = p_heatmap_aligned, width = 8.5, height = 5, dpi = 300)
+cat("=== 极性对齐版顶刊热图已生成并导出为 PDF 文件！===\n")
 cat("\n=== 提示：单因素回归表格与规范热图已全部生成完毕！===\n")
